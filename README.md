@@ -10,7 +10,7 @@ A Jellyfin 12 plugin that automatically fills in the **Parental Rating** field (
 - **Choose how often:** check for new media every hour, 6 hours, 12 hours, day or week, or manually only. It can also check automatically after every library scan.
 - **Whole library re-check:** on demand, or every week, 2 weeks or 30 days.
 - **Run now** buttons on the settings page.
-- Respects locked items and locked rating fields, and can optionally lock the rating once set.
+- Locked ratings: leave them alone (default), update them and keep the lock, or update them and unlock them. Items locked as a whole are always left alone. It can also lock ratings once set.
 - Copies a series' rating to its seasons and episodes (the same as Jellyfin's own metadata editor does), so parental controls work on episodes.
 - Updates the value Jellyfin's parental controls actually filter on, not just the text shown.
 

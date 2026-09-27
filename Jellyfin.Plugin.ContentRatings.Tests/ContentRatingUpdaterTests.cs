@@ -275,6 +275,102 @@ public class ContentRatingUpdaterTests
         Assert.Equal([series.Id, season.Id], updater.Saved.Select(i => i.Id));
     }
 
+    private Movie NewLockedMovie(string name, string rating)
+    {
+        var movie = NewMovie(name, rating);
+        movie.LockedFields = [MetadataField.OfficialRating];
+        _libraryItems = [.. _libraryItems, movie];
+        return movie;
+    }
+
+    [Fact]
+    public async Task OverwriteModeUpdatesLockedRatingAndKeepsLock()
+    {
+        var movie = NewLockedMovie("Locked", "R");
+        _tmdb.Ratings[movie.Id] = new SourceRating("18", "GB");
+        _config.LockedRatings = LockedRatingModes.Overwrite;
+
+        await CreateUpdater().RunAsync(fullScan: true, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal("18", movie.OfficialRating);
+        Assert.Contains(MetadataField.OfficialRating, movie.LockedFields);
+    }
+
+    [Fact]
+    public async Task UnlockModeUpdatesLockedRatingAndRemovesLock()
+    {
+        var movie = NewLockedMovie("Locked", "R");
+        _tmdb.Ratings[movie.Id] = new SourceRating("18", "GB");
+        _config.LockedRatings = LockedRatingModes.Unlock;
+
+        await CreateUpdater().RunAsync(fullScan: true, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal("18", movie.OfficialRating);
+        Assert.DoesNotContain(MetadataField.OfficialRating, movie.LockedFields);
+    }
+
+    [Fact]
+    public async Task UnlockModeUnlocksEvenWhenRatingAlreadyCorrect()
+    {
+        var movie = NewLockedMovie("Locked", "18");
+        _tmdb.Ratings[movie.Id] = new SourceRating("18", "GB");
+        _config.LockedRatings = LockedRatingModes.Unlock;
+        var updater = CreateUpdater();
+
+        var summary = await updater.RunAsync(fullScan: true, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal(1, summary.Updated);
+        Assert.DoesNotContain(MetadataField.OfficialRating, movie.LockedFields);
+        Assert.Single(updater.Saved);
+    }
+
+    [Fact]
+    public async Task LockAfterUpdateTakesPriorityOverUnlock()
+    {
+        var movie = NewLockedMovie("Locked", "R");
+        _tmdb.Ratings[movie.Id] = new SourceRating("18", "GB");
+        _config.LockedRatings = LockedRatingModes.Unlock;
+        _config.LockAfterUpdate = true;
+
+        await CreateUpdater().RunAsync(fullScan: true, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal("18", movie.OfficialRating);
+        Assert.Contains(MetadataField.OfficialRating, movie.LockedFields);
+    }
+
+    [Fact]
+    public async Task WholeItemLockIsAlwaysRespected()
+    {
+        var movie = NewMovie("Item lock", "R");
+        movie.IsLocked = true;
+        _libraryItems = [movie];
+        _tmdb.Ratings[movie.Id] = new SourceRating("18", "GB");
+        _config.LockedRatings = LockedRatingModes.Unlock;
+
+        var summary = await CreateUpdater().RunAsync(fullScan: true, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal(1, summary.Skipped);
+        Assert.Equal("R", movie.OfficialRating);
+    }
+
+    [Fact]
+    public async Task UnlockModeAppliesToLockedEpisodes()
+    {
+        var series = new Series { Id = Guid.NewGuid(), Name = "Show" };
+        var lockedEpisode = new Episode { Id = Guid.NewGuid(), Name = "Locked", OfficialRating = "15", LockedFields = [MetadataField.OfficialRating] };
+        var lockedWrong = new Episode { Id = Guid.NewGuid(), Name = "Locked wrong", OfficialRating = "TV-MA", LockedFields = [MetadataField.OfficialRating] };
+        _libraryItems = [series];
+        _children[series.Id] = [lockedEpisode, lockedWrong];
+        _tmdb.Ratings[series.Id] = new SourceRating("15", "GB");
+        _config.LockedRatings = LockedRatingModes.Unlock;
+
+        await CreateUpdater().RunAsync(fullScan: true, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal("15", lockedWrong.OfficialRating);
+        Assert.Empty(lockedEpisode.LockedFields);
+        Assert.Empty(lockedWrong.LockedFields);
+    }
+
     [Fact]
     public async Task LockAfterUpdateAddsLockedField()
     {
@@ -342,10 +438,7 @@ public class ContentRatingUpdaterTests
         {
             // Skip the real save, which needs a running server; keep the field changes.
             item.OfficialRating = rating;
-            if (lockField)
-            {
-                item.LockedFields = [.. item.LockedFields, MetadataField.OfficialRating];
-            }
+            ApplyLock(item, lockField);
 
             Saved.Add(item);
             return Task.CompletedTask;

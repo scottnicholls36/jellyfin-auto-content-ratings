@@ -93,6 +93,12 @@ public class PluginConfiguration : BasePluginConfiguration
     public bool IncludeCountryPrefix { get; set; }
 
     /// <summary>
+    /// Gets or sets what to do when an item's rating field is locked, see <see cref="LockedRatingModes"/>.
+    /// Items locked as a whole are always left alone.
+    /// </summary>
+    public string LockedRatings { get; set; } = LockedRatingModes.Skip;
+
+    /// <summary>
     /// Gets or sets a value indicating whether to lock the rating field after writing it,
     /// so a later metadata refresh cannot change it.
     /// </summary>

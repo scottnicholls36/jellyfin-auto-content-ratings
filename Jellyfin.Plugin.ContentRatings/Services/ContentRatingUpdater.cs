@@ -260,7 +260,7 @@ public class ContentRatingUpdater
         CancellationToken cancellationToken)
     {
         if (sources.Count == 0
-            || IsRatingLocked(item)
+            || !CanWrite(item, config)
             || (!config.OverwriteExisting && !string.IsNullOrEmpty(item.OfficialRating)))
         {
             return ItemOutcome.Skipped;
@@ -284,11 +284,20 @@ public class ContentRatingUpdater
 
         var rating = RatingSelector.Format(found, config.IncludeCountryPrefix);
         var changed = !string.Equals(item.OfficialRating, rating, StringComparison.OrdinalIgnoreCase);
+        var unlock = NeedsUnlock(item, config);
 
         if (changed)
         {
             _logger.LogInformation("{Name}: {Old} -> {New}", item.Name, string.IsNullOrEmpty(item.OfficialRating) ? "(none)" : item.OfficialRating, rating);
-            await SaveRatingAsync(item, rating, config.LockAfterUpdate, cancellationToken).ConfigureAwait(false);
+        }
+        else if (unlock)
+        {
+            _logger.LogInformation("{Name}: unlocked rating {Rating}", item.Name, rating);
+        }
+
+        if (changed || unlock)
+        {
+            await SaveRatingAsync(item, rating, ShouldLock(item, config), cancellationToken).ConfigureAwait(false);
         }
 
         if (item is Series && config.ApplyToSeasonsAndEpisodes)
@@ -296,7 +305,7 @@ public class ContentRatingUpdater
             await ApplyToChildrenAsync(item, rating, config, cancellationToken).ConfigureAwait(false);
         }
 
-        return changed ? ItemOutcome.Updated : ItemOutcome.Unchanged;
+        return changed || unlock ? ItemOutcome.Updated : ItemOutcome.Unchanged;
     }
 
     private async Task ApplyToChildrenAsync(BaseItem series, string rating, PluginConfiguration config, CancellationToken cancellationToken)
@@ -312,35 +321,74 @@ public class ContentRatingUpdater
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (IsRatingLocked(child)
-                || string.Equals(child.OfficialRating, rating, StringComparison.OrdinalIgnoreCase)
-                || (!config.OverwriteExisting && !string.IsNullOrEmpty(child.OfficialRating)))
+            var changed = !string.Equals(child.OfficialRating, rating, StringComparison.OrdinalIgnoreCase);
+            if (!CanWrite(child, config)
+                || !(changed || NeedsUnlock(child, config))
+                || (changed && !config.OverwriteExisting && !string.IsNullOrEmpty(child.OfficialRating)))
             {
                 continue;
             }
 
-            await SaveRatingAsync(child, rating, config.LockAfterUpdate, cancellationToken).ConfigureAwait(false);
+            await SaveRatingAsync(child, rating, ShouldLock(child, config), cancellationToken).ConfigureAwait(false);
         }
     }
 
-    private static bool IsRatingLocked(BaseItem item)
-        => item.IsLocked || item.LockedFields.Contains(MetadataField.OfficialRating);
+    private static bool IsFieldLocked(BaseItem item)
+        => item.LockedFields.Contains(MetadataField.OfficialRating);
+
+    private static string LockedMode(PluginConfiguration config)
+        => config.LockedRatings switch
+        {
+            var m when string.Equals(m, LockedRatingModes.Overwrite, StringComparison.OrdinalIgnoreCase) => LockedRatingModes.Overwrite,
+            var m when string.Equals(m, LockedRatingModes.Unlock, StringComparison.OrdinalIgnoreCase) => LockedRatingModes.Unlock,
+            _ => LockedRatingModes.Skip
+        };
+
+    /// <summary>
+    /// Whole-item locks are always respected; a locked rating field only when the mode says so.
+    /// </summary>
+    private static bool CanWrite(BaseItem item, PluginConfiguration config)
+        => !item.IsLocked && (!IsFieldLocked(item) || LockedMode(config) != LockedRatingModes.Skip);
+
+    /// <summary>
+    /// Whether the rating field should be locked once written.
+    /// </summary>
+    private static bool ShouldLock(BaseItem item, PluginConfiguration config)
+        => config.LockAfterUpdate || (IsFieldLocked(item) && LockedMode(config) == LockedRatingModes.Overwrite);
+
+    /// <summary>
+    /// Whether an item needs saving just to remove its lock, even if the rating is already right.
+    /// </summary>
+    private static bool NeedsUnlock(BaseItem item, PluginConfiguration config)
+        => IsFieldLocked(item) && !ShouldLock(item, config) && LockedMode(config) == LockedRatingModes.Unlock;
 
     /// <summary>
     /// Writes the rating the same way Jellyfin's metadata editor does, including recalculating the
     /// parental rating score that parental controls filter on.
     /// </summary>
+    /// <param name="item">Item to update.</param>
+    /// <param name="rating">New rating.</param>
+    /// <param name="lockField">Whether the rating field should end up locked (added or removed as needed).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
     internal virtual async Task SaveRatingAsync(BaseItem item, string rating, bool lockField, CancellationToken cancellationToken)
     {
         item.OfficialRating = rating;
-
-        if (lockField && !item.LockedFields.Contains(MetadataField.OfficialRating))
-        {
-            item.LockedFields = [.. item.LockedFields, MetadataField.OfficialRating];
-        }
+        ApplyLock(item, lockField);
 
         item.OnMetadataChanged();
         await item.UpdateToRepositoryAsync(ItemUpdateType.MetadataEdit, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static void ApplyLock(BaseItem item, bool lockField)
+    {
+        if (lockField && !IsFieldLocked(item))
+        {
+            item.LockedFields = [.. item.LockedFields, MetadataField.OfficialRating];
+        }
+        else if (!lockField && IsFieldLocked(item))
+        {
+            item.LockedFields = item.LockedFields.Where(f => f != MetadataField.OfficialRating).ToArray();
+        }
     }
 
     private enum ItemOutcome
