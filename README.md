@@ -16,13 +16,25 @@ A Jellyfin 12 plugin that automatically fills in the **Parental Rating** field (
 
 ## Installing
 
-1. Download the latest `auto-content-ratings_x.x.x.x.zip` from the [Releases](../../releases) page, or from the artifacts of the latest run under the **Actions** tab.
+### From the plugin catalogue (recommended)
+
+1. In Jellyfin, go to **Dashboard > Plugins**, open the **Repositories** tab (called **Catalog settings** in some versions) and add a repository:
+   - **Name:** `Auto Content Ratings`
+   - **URL:** `https://raw.githubusercontent.com/scottnicholls36/jellyfin-auto-content-ratings/main/manifest.json`
+2. Go to the **Catalog**, find **Auto Content Ratings** under Metadata, and click **Install**.
+3. Restart Jellyfin.
+4. Go to **Dashboard > Plugins > Auto Content Ratings**.
+
+New versions then show up as updates in Jellyfin automatically.
+
+### Manually
+
+1. Download the latest `auto-content-ratings_x.x.x.x.zip` from the [Releases](../../releases) page.
 2. Unzip it into a new folder inside Jellyfin's plugins folder, e.g. `plugins/AutoContentRatings_1.0.0.0/`:
    - Docker: `/config/plugins/` (or `/config/data/plugins/`)
    - Linux: `/var/lib/jellyfin/plugins/`
    - Windows: `%ProgramData%\Jellyfin\Server\plugins\`
 3. Restart Jellyfin.
-4. Go to **Dashboard > Plugins > Auto Content Ratings**.
 
 ## Setting up
 
@@ -51,10 +63,15 @@ Requires the .NET 10 SDK.
 
 ```sh
 dotnet test Jellyfin.Plugin.ContentRatings.slnx
-dotnet build Jellyfin.Plugin.ContentRatings/Jellyfin.Plugin.ContentRatings.csproj -c Release
+scripts/package.sh 1.0.0.0   # builds and zips the plugin into artifacts/
 ```
 
-The plugin is `Jellyfin.Plugin.ContentRatings/bin/Release/net10.0/Jellyfin.Plugin.ContentRatings.dll`. Pushing a tag like `v1.0.0` builds a GitHub release with the zip attached.
+## Releasing a new version
+
+1. On GitHub, go to **Actions > Release > Run workflow**.
+2. Type the version (e.g. `1.1.0`) and, optionally, what changed.
+
+The workflow runs the tests, builds the zip, publishes a GitHub release, and adds the release to `manifest.json` on `main`. Jellyfin servers using the repository then see the update. Pushing a tag such as `v1.1.0` does the same.
 
 ## Project layout
 
@@ -65,3 +82,5 @@ The plugin is `Jellyfin.Plugin.ContentRatings/bin/Release/net10.0/Jellyfin.Plugi
 | `Sources/` | TMDB and TVDB clients and the logic that picks the right certification |
 | `Services/ContentRatingUpdater.cs` | Finds items in the chosen libraries and writes ratings |
 | `Tasks/` | The two scheduled tasks and the after-library-scan hook |
+| `manifest.json` | The plugin repository file Jellyfin reads; updated by the Release workflow |
+| `scripts/` | Packaging and manifest helpers used by the workflows |

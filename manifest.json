@@ -1,0 +1,11 @@
+[
+  {
+    "guid": "44c838b7-b4cc-4cdf-bc1d-3f8fe3ce3748",
+    "name": "Auto Content Ratings",
+    "description": "Looks up the official content rating for movies and TV series in the libraries you choose, using either TMDB or TVDB, and writes it to the item's Parental Rating field. Runs on a schedule, after library scans, or on demand, and can re-check the whole library.",
+    "overview": "Automatically sets content ratings (PG, 12, 15...) from TMDB or TVDB",
+    "owner": "scottnicholls36",
+    "category": "Metadata",
+    "versions": []
+  }
+]
