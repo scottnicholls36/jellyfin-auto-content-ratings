@@ -1,0 +1,87 @@
+name: Release
+
+# Run from the Actions tab (type a version), or push a tag like v1.0.0.
+# Builds the plugin, publishes a GitHub release with the zip, and adds that
+# release to manifest.json on the default branch so Jellyfin offers it.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, e.g. 1.0.0"
+        required: true
+      changelog:
+        description: "What changed"
+        required: false
+        default: ""
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Work out version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_CHANGELOG: ${{ inputs.changelog }}
+        run: |
+          raw="${INPUT_VERSION:-$GITHUB_REF_NAME}"
+          raw="${raw#v}"
+          if ! [[ "$raw" =~ ^[0-9]+(\.[0-9]+){0,3}$ ]]; then
+            echo "::error::'$raw' is not a version like 1.0.0"; exit 1
+          fi
+          # Jellyfin versions have four parts.
+          IFS=. read -r a b c d <<< "$raw"
+          version="${a}.${b:-0}.${c:-0}.${d:-0}"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "TAG=v$version" >> "$GITHUB_ENV"
+          echo "TARGET_ABI=$(sed -n 's/^targetAbi: *"\(.*\)"/\1/p' build.yaml)" >> "$GITHUB_ENV"
+          {
+            echo "CHANGELOG<<CHANGELOG_EOF"
+            echo "${INPUT_CHANGELOG:-Release $version}"
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Test
+        run: dotnet test Jellyfin.Plugin.ContentRatings.slnx -c Release
+
+      - name: Package
+        run: echo "ZIP=$(scripts/package.sh "$VERSION" | tail -n 1)" >> "$GITHUB_ENV"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ env.TAG }}
+          body: ${{ env.CHANGELOG }}
+          files: ${{ env.ZIP }}
+
+      - name: Add release to manifest.json
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout -B "$DEFAULT_BRANCH" "origin/$DEFAULT_BRANCH"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/$(basename "$ZIP")"
+          python3 scripts/update_manifest.py manifest.json "$ZIP" "$VERSION" "$url" "$TARGET_ABI" "$CHANGELOG"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add manifest.json
+          git commit -m "Add $TAG to plugin manifest"
+          git push origin "$DEFAULT_BRANCH"
