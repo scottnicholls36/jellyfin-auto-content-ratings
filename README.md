@@ -1,0 +1,1 @@
+# jellyfin-auto-content-ratings
