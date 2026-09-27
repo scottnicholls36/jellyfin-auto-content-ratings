@@ -9,9 +9,16 @@ namespace Jellyfin.Plugin.ContentRatings.Configuration;
 public class PluginConfiguration : BasePluginConfiguration
 {
     /// <summary>
-    /// Gets or sets the primary data source: <c>Tmdb</c> or <c>Tvdb</c>.
+    /// Gets or sets the data source for movies: <c>Tmdb</c> or <c>Tvdb</c>.
+    /// Named <c>Source</c> because it predates <see cref="SeriesSource"/>; existing settings keep working.
     /// </summary>
     public string Source { get; set; } = RatingSourceNames.Tmdb;
+
+    /// <summary>
+    /// Gets or sets the data source for TV series: <c>Tmdb</c> or <c>Tvdb</c>.
+    /// Empty means the same as <see cref="Source"/>.
+    /// </summary>
+    public string SeriesSource { get; set; } = string.Empty;
 
     /// <summary>
     /// Gets or sets the TMDB API key (v3 key or v4 read access token).
@@ -29,7 +36,7 @@ public class PluginConfiguration : BasePluginConfiguration
     public string TvdbPin { get; set; } = string.Empty;
 
     /// <summary>
-    /// Gets or sets a value indicating whether to try the other source when the primary one has no rating.
+    /// Gets or sets a value indicating whether to try the other source when the chosen one has no rating.
     /// Only used when that source also has an API key.
     /// </summary>
     public bool FallbackToOtherSource { get; set; }
@@ -90,4 +97,10 @@ public class PluginConfiguration : BasePluginConfiguration
     /// so a later metadata refresh cannot change it.
     /// </summary>
     public bool LockAfterUpdate { get; set; }
+
+    /// <summary>
+    /// Gets the source actually used for TV series.
+    /// </summary>
+    /// <returns><see cref="SeriesSource"/>, or <see cref="Source"/> when it is not set.</returns>
+    public string GetSeriesSource() => string.IsNullOrWhiteSpace(SeriesSource) ? Source : SeriesSource;
 }

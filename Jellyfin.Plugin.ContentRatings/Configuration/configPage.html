@@ -17,11 +17,19 @@
                     <div class="verticalSection">
                         <h3 class="sectionTitle">Data source</h3>
                         <div class="selectContainer">
-                            <label class="selectLabel" for="Source">Get ratings from</label>
+                            <label class="selectLabel" for="Source">Get movie ratings from</label>
                             <select is="emby-select" id="Source" class="emby-select-withcolor emby-select">
                                 <option value="Tmdb">TMDB (The Movie Database)</option>
                                 <option value="Tvdb">TVDB (TheTVDB)</option>
                             </select>
+                        </div>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="SeriesSource">Get TV series ratings from</label>
+                            <select is="emby-select" id="SeriesSource" class="emby-select-withcolor emby-select">
+                                <option value="Tmdb">TMDB (The Movie Database)</option>
+                                <option value="Tvdb">TVDB (TheTVDB)</option>
+                            </select>
+                            <div class="fieldDescription">You can use a different source for each, e.g. TMDB for movies and TVDB for TV. Enter an API key for each source you use.</div>
                         </div>
                         <div class="inputContainer" id="TmdbKeyContainer">
                             <label class="inputLabel inputLabelUnfocused" for="TmdbApiKey">TMDB API key</label>
@@ -202,11 +210,13 @@
                 }
 
                 function updateSourceVisibility() {
-                    var tvdb = $('#Source').value === 'Tvdb';
+                    var chosen = [$('#Source').value, $('#SeriesSource').value];
                     var both = $('#FallbackToOtherSource').checked;
-                    $('#TmdbKeyContainer').style.display = (!tvdb || both) ? '' : 'none';
-                    $('#TvdbKeyContainer').style.display = (tvdb || both) ? '' : 'none';
-                    $('#TvdbPinContainer').style.display = (tvdb || both) ? '' : 'none';
+                    var tmdb = both || chosen.indexOf('Tmdb') !== -1;
+                    var tvdb = both || chosen.indexOf('Tvdb') !== -1;
+                    $('#TmdbKeyContainer').style.display = tmdb ? '' : 'none';
+                    $('#TvdbKeyContainer').style.display = tvdb ? '' : 'none';
+                    $('#TvdbPinContainer').style.display = tvdb ? '' : 'none';
                 }
 
                 function renderLibraries(folders, selectedIds) {
@@ -293,6 +303,7 @@
                 fillCountries($('#CountryCode'), false);
                 fillCountries($('#FallbackCountryCode'), true);
                 $('#Source').addEventListener('change', updateSourceVisibility);
+                $('#SeriesSource').addEventListener('change', updateSourceVisibility);
                 $('#FallbackToOtherSource').addEventListener('change', updateSourceVisibility);
                 $('#RunNewMedia').addEventListener('click', function () { runTask(taskKeys.newMedia); });
                 $('#RunFullLibrary').addEventListener('click', function () { runTask(taskKeys.full); });
@@ -305,6 +316,8 @@
                     ]).then(function (results) {
                         var config = results[0];
                         setSelect($('#Source'), config.Source || 'Tmdb');
+                        // An empty SeriesSource means "same as movies" (settings saved before it existed).
+                        setSelect($('#SeriesSource'), config.SeriesSource || config.Source || 'Tmdb');
                         $('#TmdbApiKey').value = config.TmdbApiKey || '';
                         $('#TvdbApiKey').value = config.TvdbApiKey || '';
                         $('#TvdbPin').value = config.TvdbPin || '';
@@ -332,6 +345,7 @@
                     Dashboard.showLoadingMsg();
                     ApiClient.getPluginConfiguration(pluginId).then(function (config) {
                         config.Source = $('#Source').value;
+                        config.SeriesSource = $('#SeriesSource').value;
                         config.TmdbApiKey = $('#TmdbApiKey').value.trim();
                         config.TvdbApiKey = $('#TvdbApiKey').value.trim();
                         config.TvdbPin = $('#TvdbPin').value.trim();
@@ -350,11 +364,14 @@
                             return c.value;
                         });
 
-                        var needed = config.Source === 'Tvdb' ? config.TvdbApiKey : config.TmdbApiKey;
+                        var keys = { Tmdb: config.TmdbApiKey, Tvdb: config.TvdbApiKey };
+                        var missing = [config.Source, config.SeriesSource].filter(function (s, i, all) {
+                            return all.indexOf(s) === i && !keys[s];
+                        });
                         return ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
                             Dashboard.processPluginConfigurationUpdateResult(result);
-                            if (!needed) {
-                                notify('Saved, but no API key is set for the chosen source, so nothing will be updated yet.');
+                            if (missing.length) {
+                                notify('Saved, but there is no ' + missing.map(function (s) { return s.toUpperCase(); }).join(' or ') + ' API key, so items using it will be skipped.');
                             } else if (config.LibraryIds.length === 0) {
                                 notify('Saved, but no libraries are ticked, so nothing will be updated yet.');
                             }
