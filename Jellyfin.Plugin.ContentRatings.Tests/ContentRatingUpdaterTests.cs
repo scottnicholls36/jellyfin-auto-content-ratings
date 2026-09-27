@@ -205,6 +205,56 @@ public class ContentRatingUpdaterTests
     }
 
     [Fact]
+    public async Task UsesSeparateSourcesForMoviesAndSeries()
+    {
+        var movie = NewMovie("Film");
+        var series = new Series { Id = Guid.NewGuid(), Name = "Show" };
+        _libraryItems = [movie, series];
+        _tmdb.Ratings[movie.Id] = new SourceRating("PG", "GB");
+        _tmdb.Ratings[series.Id] = new SourceRating("18", "GB");
+        _tvdb.Ratings[movie.Id] = new SourceRating("U", "GB");
+        _tvdb.Ratings[series.Id] = new SourceRating("15", "GB");
+        _config.TvdbApiKey = "tvdb";
+        _config.SeriesSource = RatingSourceNames.Tvdb;
+
+        await CreateUpdater().RunAsync(fullScan: true, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal("PG", movie.OfficialRating);
+        Assert.Equal("15", series.OfficialRating);
+    }
+
+    [Fact]
+    public async Task EmptySeriesSourceFollowsMovieSource()
+    {
+        var series = new Series { Id = Guid.NewGuid(), Name = "Show" };
+        _libraryItems = [series];
+        _tmdb.Ratings[series.Id] = new SourceRating("12", "GB");
+        _tvdb.Ratings[series.Id] = new SourceRating("15", "GB");
+        _config.TvdbApiKey = "tvdb";
+
+        await CreateUpdater().RunAsync(fullScan: true, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal("12", series.OfficialRating);
+    }
+
+    [Fact]
+    public async Task SkipsOnlyTheTypeWhoseSourceHasNoKey()
+    {
+        var movie = NewMovie("Film");
+        var series = new Series { Id = Guid.NewGuid(), Name = "Show" };
+        _libraryItems = [movie, series];
+        _tmdb.Ratings[movie.Id] = new SourceRating("PG", "GB");
+        _config.SeriesSource = RatingSourceNames.Tvdb;
+
+        var summary = await CreateUpdater().RunAsync(fullScan: true, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal("PG", movie.OfficialRating);
+        Assert.Null(series.OfficialRating);
+        Assert.Equal(1, summary.Skipped);
+        Assert.Equal(0, _tvdb.Calls);
+    }
+
+    [Fact]
     public async Task CopiesSeriesRatingToSeasonsAndEpisodes()
     {
         var series = new Series { Id = Guid.NewGuid(), Name = "Show" };

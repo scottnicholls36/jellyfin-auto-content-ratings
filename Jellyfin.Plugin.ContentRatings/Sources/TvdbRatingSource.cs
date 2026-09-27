@@ -4,7 +4,8 @@ using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net.Http.Json;
+using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Jellyfin.Plugin.ContentRatings.Configuration;
@@ -157,14 +158,17 @@ public sealed class TvdbRatingSource : IRatingSource
                 return _token;
             }
 
-            object body = string.IsNullOrEmpty(pin) ? new { apikey = apiKey } : new { apikey = apiKey, pin };
+            // Serialised up front so the request has a Content-Length; JsonContent streams it chunked,
+            // which not every server or proxy in front of TVDB accepts.
+            var body = JsonSerializer.Serialize(
+                string.IsNullOrEmpty(pin) ? new Dictionary<string, string> { ["apikey"] = apiKey } : new Dictionary<string, string> { ["apikey"] = apiKey, ["pin"] = pin });
 
             TvdbResponse<TvdbLoginData>? response;
             try
             {
                 response = await _http.SendAsync<TvdbResponse<TvdbLoginData>>(
                     client,
-                    () => new HttpRequestMessage(HttpMethod.Post, BaseUrl + "login") { Content = JsonContent.Create(body) },
+                    () => new HttpRequestMessage(HttpMethod.Post, BaseUrl + "login") { Content = new StringContent(body, Encoding.UTF8, "application/json") },
                     cancellationToken).ConfigureAwait(false);
             }
             catch (HttpUnauthorizedException)

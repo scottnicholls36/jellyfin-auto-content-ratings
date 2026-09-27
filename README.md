@@ -4,7 +4,7 @@ A Jellyfin 12 plugin that automatically fills in the **Parental Rating** field (
 
 ## Features
 
-- **Choose your data source:** TMDB or TVDB, with an optional fallback to the other if the first has no rating.
+- **Choose your data source:** TMDB or TVDB, set separately for movies and TV series (e.g. TMDB for movies, TVDB for TV), with an optional fallback to the other if the first has no rating.
 - **Choose the rating country:** e.g. United Kingdom for BBFC ratings, with an optional fallback country (e.g. US).
 - **Choose your libraries:** only ticked movie and TV libraries are touched.
 - **Choose how often:** check for new media every hour, 6 hours, 12 hours, day or week, or manually only. It can also check automatically after every library scan.
@@ -41,7 +41,7 @@ New versions then show up as updates in Jellyfin automatically.
 1. **Get an API key**
    - TMDB (free): create an account, then go to [Settings > API](https://www.themoviedb.org/settings/api). Either the "API Key" or the "API Read Access Token" works.
    - TVDB: create a v4 project key at [thetvdb.com](https://thetvdb.com/dashboard/account/apikey). If it's a user-supported key, you also need your subscriber PIN.
-2. Pick the source, paste the key, choose the country and tick your libraries.
+2. Pick a source for movies and one for TV series, paste a key for each source you use, choose the country and tick your libraries.
 3. Pick the schedules and click **Save**.
 4. Click **Check whole library now** for the first run. Progress shows under **Dashboard > Scheduled Tasks**, and details under **Dashboard > Logs**.
 

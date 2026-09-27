@@ -97,11 +97,22 @@ public class ContentRatingUpdater
         var config = _getConfig();
         var startedUtc = DateTime.UtcNow;
 
-        var sources = OrderedSources(config);
-        if (sources.Count == 0)
+        var movieSources = OrderedSources(config, config.Source);
+        var seriesSources = OrderedSources(config, config.GetSeriesSource());
+        if (movieSources.Count == 0 && seriesSources.Count == 0)
         {
-            _logger.LogWarning("No API key is set for {Source}; nothing to do. Add one on the plugin settings page", config.Source);
+            _logger.LogWarning("No API key is set for the chosen sources; nothing to do. Add one on the plugin settings page");
             return new UpdateSummary(0, 0, 0, 0, 0, 0);
+        }
+
+        if (movieSources.Count == 0)
+        {
+            _logger.LogWarning("No API key is set for {Source}, so movies will be skipped", config.Source);
+        }
+
+        if (seriesSources.Count == 0)
+        {
+            _logger.LogWarning("No API key is set for {Source}, so TV series will be skipped", config.GetSeriesSource());
         }
 
         var libraryIds = config.LibraryIds
@@ -120,10 +131,11 @@ public class ContentRatingUpdater
         var items = CollectItems(libraryIds, since, retryUnrated: config.RetryUnrated);
 
         _logger.LogInformation(
-            "Checking content ratings for {Count} items ({Mode}) using {Sources}",
+            "Checking content ratings for {Count} items ({Mode}); movies from {MovieSources}, TV series from {SeriesSources}",
             items.Count,
             since is null ? "all items" : $"added since {since:u}",
-            string.Join(" then ", sources.Select(s => s.Name)));
+            Describe(movieSources),
+            Describe(seriesSources));
 
         var countries = new[] { config.CountryCode, config.FallbackCountryCode }
             .Select(c => c?.Trim().ToUpperInvariant())
@@ -141,6 +153,7 @@ public class ContentRatingUpdater
 
             try
             {
+                var sources = item is Series ? seriesSources : movieSources;
                 switch (await ProcessItemAsync(item, sources, countries, config, cancellationToken).ConfigureAwait(false))
                 {
                     case ItemOutcome.Updated: updated++; break;
@@ -176,9 +189,9 @@ public class ContentRatingUpdater
         return summary;
     }
 
-    private List<IRatingSource> OrderedSources(PluginConfiguration config)
+    private List<IRatingSource> OrderedSources(PluginConfiguration config, string chosen)
     {
-        var primary = _sources.FirstOrDefault(s => string.Equals(s.Name, config.Source, StringComparison.OrdinalIgnoreCase))
+        var primary = _sources.FirstOrDefault(s => string.Equals(s.Name, chosen, StringComparison.OrdinalIgnoreCase))
             ?? _sources.First(s => s.Name == RatingSourceNames.Tmdb);
 
         var result = new List<IRatingSource>();
@@ -194,6 +207,9 @@ public class ContentRatingUpdater
 
         return result;
     }
+
+    private static string Describe(IReadOnlyList<IRatingSource> sources)
+        => sources.Count == 0 ? "(none: no API key)" : string.Join(" then ", sources.Select(s => s.Name));
 
     private List<BaseItem> CollectItems(IReadOnlyList<Guid> libraryIds, DateTime? since, bool retryUnrated)
     {
@@ -243,7 +259,9 @@ public class ContentRatingUpdater
         PluginConfiguration config,
         CancellationToken cancellationToken)
     {
-        if (IsRatingLocked(item) || (!config.OverwriteExisting && !string.IsNullOrEmpty(item.OfficialRating)))
+        if (sources.Count == 0
+            || IsRatingLocked(item)
+            || (!config.OverwriteExisting && !string.IsNullOrEmpty(item.OfficialRating)))
         {
             return ItemOutcome.Skipped;
         }
