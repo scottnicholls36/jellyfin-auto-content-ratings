@@ -112,7 +112,7 @@
                                 <input id="OverwriteExisting" type="checkbox" is="emby-checkbox" />
                                 <span>Replace existing ratings</span>
                             </label>
-                            <div class="fieldDescription checkboxFieldDescription">When off, only items with no rating are filled in. Items or fields you have locked are never changed.</div>
+                            <div class="fieldDescription checkboxFieldDescription">When off, only items with no rating are filled in.</div>
                         </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
@@ -134,12 +134,21 @@
                             </label>
                             <div class="fieldDescription checkboxFieldDescription">Matches Jellyfin's built-in TMDB provider. Useful if your libraries mix ratings from several countries.</div>
                         </div>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="LockedRatings">Ratings you have locked</label>
+                            <select is="emby-select" id="LockedRatings" class="emby-select-withcolor emby-select">
+                                <option value="Skip">Leave them alone</option>
+                                <option value="Overwrite">Update them, and keep them locked</option>
+                                <option value="Unlock">Update them, and unlock them</option>
+                            </select>
+                            <div class="fieldDescription">For items where the Parental Rating field is locked. Items locked as a whole ("Lock this item to prevent future changes") are always left alone. Use "Check whole library now" to apply this to existing items.</div>
+                        </div>
                         <div class="checkboxContainer checkboxContainer-withDescription">
                             <label class="emby-checkbox-label">
                                 <input id="LockAfterUpdate" type="checkbox" is="emby-checkbox" />
                                 <span>Lock the rating after updating it</span>
                             </label>
-                            <div class="fieldDescription checkboxFieldDescription">Stops a later metadata refresh from changing it back. The plugin will then also leave it alone, so a whole-library re-check will not update it either.</div>
+                            <div class="fieldDescription checkboxFieldDescription">Stops a later metadata refresh from changing it back. The plugin will then only update it again if "Ratings you have locked" is set to update them. Takes priority over unlocking.</div>
                         </div>
                     </div>
 
@@ -332,6 +341,7 @@
                         $('#ApplyToSeasonsAndEpisodes').checked = !!config.ApplyToSeasonsAndEpisodes;
                         $('#IncludeCountryPrefix').checked = !!config.IncludeCountryPrefix;
                         $('#LockAfterUpdate').checked = !!config.LockAfterUpdate;
+                        setSelect($('#LockedRatings'), config.LockedRatings || 'Skip');
                         renderLibraries(results[1] || [], config.LibraryIds || []);
                         updateSourceVisibility();
                         refreshStatus();
@@ -360,6 +370,7 @@
                         config.ApplyToSeasonsAndEpisodes = $('#ApplyToSeasonsAndEpisodes').checked;
                         config.IncludeCountryPrefix = $('#IncludeCountryPrefix').checked;
                         config.LockAfterUpdate = $('#LockAfterUpdate').checked;
+                        config.LockedRatings = $('#LockedRatings').value;
                         config.LibraryIds = Array.prototype.map.call(page.querySelectorAll('.chkLibrary:checked'), function (c) {
                             return c.value;
                         });
