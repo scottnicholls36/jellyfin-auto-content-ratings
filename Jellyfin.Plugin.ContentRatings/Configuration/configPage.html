@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Auto Content Ratings</title>
+</head>
+<body>
+    <div id="ContentRatingsConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+        <div data-role="content">
+            <div class="content-primary">
+                <form id="ContentRatingsConfigForm">
+                    <div class="verticalSection">
+                        <h2 class="sectionTitle">Auto Content Ratings</h2>
+                        <p>Looks up the official content rating (U, PG, 12A, 15, 18...) for movies and series and writes it to each item's Parental Rating.</p>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Data source</h3>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="Source">Get ratings from</label>
+                            <select is="emby-select" id="Source" class="emby-select-withcolor emby-select">
+                                <option value="Tmdb">TMDB (The Movie Database)</option>
+                                <option value="Tvdb">TVDB (TheTVDB)</option>
+                            </select>
+                        </div>
+                        <div class="inputContainer" id="TmdbKeyContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="TmdbApiKey">TMDB API key</label>
+                            <input id="TmdbApiKey" type="password" is="emby-input" autocomplete="off" />
+                            <div class="fieldDescription">A v3 API key or v4 read access token from <a is="emby-linkbutton" class="button-link" href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org/settings/api</a>.</div>
+                        </div>
+                        <div class="inputContainer" id="TvdbKeyContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="TvdbApiKey">TVDB API key</label>
+                            <input id="TvdbApiKey" type="password" is="emby-input" autocomplete="off" />
+                            <div class="fieldDescription">A v4 project API key from <a is="emby-linkbutton" class="button-link" href="https://thetvdb.com/dashboard/account/apikey" target="_blank">thetvdb.com</a>.</div>
+                        </div>
+                        <div class="inputContainer" id="TvdbPinContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="TvdbPin">TVDB subscriber PIN (optional)</label>
+                            <input id="TvdbPin" type="password" is="emby-input" autocomplete="off" />
+                            <div class="fieldDescription">Only needed for user-supported API keys.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="FallbackToOtherSource" type="checkbox" is="emby-checkbox" />
+                                <span>Try the other source if no rating is found</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">Only works if you have entered an API key for both sources.</div>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Rating country</h3>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="CountryCode">Use ratings from</label>
+                            <select is="emby-select" id="CountryCode" class="emby-select-withcolor emby-select"></select>
+                            <div class="fieldDescription">Picks which country's rating board to use, e.g. United Kingdom gives BBFC ratings (U, PG, 12A, 15, 18).</div>
+                        </div>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="FallbackCountryCode">If there is no rating for that country, use</label>
+                            <select is="emby-select" id="FallbackCountryCode" class="emby-select-withcolor emby-select"></select>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Libraries</h3>
+                        <div class="fieldDescription" style="margin-bottom: 1em;">Only movies and series in the ticked libraries are updated.</div>
+                        <div id="LibraryList" class="checkboxList"></div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Schedule</h3>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="NewMediaIntervalHours">Check for new media</label>
+                            <select is="emby-select" id="NewMediaIntervalHours" class="emby-select-withcolor emby-select">
+                                <option value="0">Manually only</option>
+                                <option value="1">Every hour</option>
+                                <option value="6">Every 6 hours</option>
+                                <option value="12">Every 12 hours</option>
+                                <option value="24">Every day</option>
+                                <option value="168">Every week</option>
+                            </select>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="RunAfterLibraryScan" type="checkbox" is="emby-checkbox" />
+                                <span>Also check for new media after every library scan</span>
+                            </label>
+                        </div>
+                        <div class="selectContainer">
+                            <label class="selectLabel" for="FullScanIntervalDays">Re-check the whole library</label>
+                            <select is="emby-select" id="FullScanIntervalDays" class="emby-select-withcolor emby-select">
+                                <option value="0">Manually only</option>
+                                <option value="7">Every week</option>
+                                <option value="14">Every 2 weeks</option>
+                                <option value="30">Every 30 days</option>
+                            </select>
+                            <div class="fieldDescription">Picks up ratings that have changed upstream. Both schedules also appear under Dashboard &gt; Scheduled Tasks.</div>
+                        </div>
+                    </div>
+
+                    <div class="verticalSection">
+                        <h3 class="sectionTitle">Options</h3>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="OverwriteExisting" type="checkbox" is="emby-checkbox" />
+                                <span>Replace existing ratings</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">When off, only items with no rating are filled in. Items or fields you have locked are never changed.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="RetryUnrated" type="checkbox" is="emby-checkbox" />
+                                <span>New-media checks also retry items that still have no rating</span>
+                            </label>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="ApplyToSeasonsAndEpisodes" type="checkbox" is="emby-checkbox" />
+                                <span>Copy a series' rating to its seasons and episodes</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">Same as editing a series' rating in Jellyfin's metadata editor. Recommended if you use parental controls.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="IncludeCountryPrefix" type="checkbox" is="emby-checkbox" />
+                                <span>Store the country with the rating (e.g. GB-15 instead of 15)</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">Matches Jellyfin's built-in TMDB provider. Useful if your libraries mix ratings from several countries.</div>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="LockAfterUpdate" type="checkbox" is="emby-checkbox" />
+                                <span>Lock the rating after updating it</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">Stops a later metadata refresh from changing it back. The plugin will then also leave it alone, so a whole-library re-check will not update it either.</div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button is="emby-button" type="submit" class="raised button-submit block emby-button">
+                            <span>Save</span>
+                        </button>
+                    </div>
+                </form>
+
+                <div class="verticalSection" style="margin-top: 2em;">
+                    <h3 class="sectionTitle">Run now</h3>
+                    <p class="fieldDescription">Save your settings first. Progress is shown under Dashboard &gt; Scheduled Tasks.</p>
+                    <button is="emby-button" type="button" id="RunNewMedia" class="raised block emby-button">
+                        <span>Check new media now</span>
+                    </button>
+                    <button is="emby-button" type="button" id="RunFullLibrary" class="raised block emby-button">
+                        <span>Check whole library now</span>
+                    </button>
+                    <div id="TaskStatus" class="fieldDescription" style="margin-top: 1em;"></div>
+                </div>
+            </div>
+        </div>
+        <script type="text/javascript">
+            (function () {
+                var pluginId = '44c838b7-b4cc-4cdf-bc1d-3f8fe3ce3748';
+                var taskKeys = { newMedia: 'ContentRatingsNewMedia', full: 'ContentRatingsFullLibrary' };
+                var page = document.querySelector('#ContentRatingsConfigPage');
+
+                var countries = [
+                    ['GB', 'United Kingdom'], ['US', 'United States'], ['IE', 'Ireland'], ['AU', 'Australia'],
+                    ['NZ', 'New Zealand'], ['CA', 'Canada'], ['DE', 'Germany'], ['FR', 'France'], ['ES', 'Spain'],
+                    ['IT', 'Italy'], ['NL', 'Netherlands'], ['BE', 'Belgium'], ['DK', 'Denmark'], ['NO', 'Norway'],
+                    ['SE', 'Sweden'], ['FI', 'Finland'], ['PL', 'Poland'], ['PT', 'Portugal'], ['BR', 'Brazil'],
+                    ['MX', 'Mexico'], ['IN', 'India'], ['JP', 'Japan'], ['KR', 'South Korea'], ['SG', 'Singapore'],
+                    ['ZA', 'South Africa']
+                ];
+
+                function $(selector) {
+                    return page.querySelector(selector);
+                }
+
+                function notify(message) {
+                    if (window.Dashboard && Dashboard.alert) {
+                        Dashboard.alert(message);
+                    } else {
+                        alert(message);
+                    }
+                }
+
+                function fillCountries(select, includeNone) {
+                    select.innerHTML = '';
+                    if (includeNone) {
+                        select.appendChild(new Option('No fallback', ''));
+                    }
+                    countries.forEach(function (c) {
+                        select.appendChild(new Option(c[1] + ' (' + c[0] + ')', c[0]));
+                    });
+                }
+
+                function setSelect(select, value) {
+                    var v = value === null || value === undefined ? '' : String(value);
+                    if (v && !Array.prototype.some.call(select.options, function (o) { return o.value === v; })) {
+                        // Keep values set outside this list (e.g. by editing the XML) rather than silently dropping them.
+                        select.appendChild(new Option(v, v));
+                    }
+                    select.value = v;
+                }
+
+                function updateSourceVisibility() {
+                    var tvdb = $('#Source').value === 'Tvdb';
+                    var both = $('#FallbackToOtherSource').checked;
+                    $('#TmdbKeyContainer').style.display = (!tvdb || both) ? '' : 'none';
+                    $('#TvdbKeyContainer').style.display = (tvdb || both) ? '' : 'none';
+                    $('#TvdbPinContainer').style.display = (tvdb || both) ? '' : 'none';
+                }
+
+                function renderLibraries(folders, selectedIds) {
+                    var list = $('#LibraryList');
+                    list.innerHTML = '';
+                    var usable = folders.filter(function (f) {
+                        return !f.CollectionType || f.CollectionType === 'movies' || f.CollectionType === 'tvshows' || f.CollectionType === 'mixed';
+                    });
+
+                    if (usable.length === 0) {
+                        list.textContent = 'No movie or TV libraries found.';
+                        return;
+                    }
+
+                    usable.forEach(function (f) {
+                        var label = document.createElement('label');
+                        label.className = 'emby-checkbox-label';
+                        var input = document.createElement('input');
+                        input.type = 'checkbox';
+                        input.setAttribute('is', 'emby-checkbox');
+                        input.className = 'chkLibrary';
+                        input.value = f.ItemId;
+                        input.checked = selectedIds.indexOf(f.ItemId) !== -1;
+                        var span = document.createElement('span');
+                        span.textContent = f.Name + (f.CollectionType ? ' (' + f.CollectionType + ')' : '');
+                        label.appendChild(input);
+                        label.appendChild(span);
+                        var wrapper = document.createElement('div');
+                        wrapper.className = 'checkboxContainer';
+                        wrapper.appendChild(label);
+                        list.appendChild(wrapper);
+                    });
+                }
+
+                function getTasks() {
+                    return ApiClient.getJSON(ApiClient.getUrl('ScheduledTasks', { isHidden: false }));
+                }
+
+                function describeTask(task) {
+                    if (!task) {
+                        return '';
+                    }
+                    if (task.State === 'Running') {
+                        return task.Name + ': running' + (task.CurrentProgressPercentage ? ' (' + Math.round(task.CurrentProgressPercentage) + '%)' : '');
+                    }
+                    var r = task.LastExecutionResult;
+                    if (!r) {
+                        return task.Name + ': not run yet';
+                    }
+                    return task.Name + ': ' + r.Status + ' at ' + new Date(r.EndTimeUtc).toLocaleString();
+                }
+
+                function refreshStatus() {
+                    getTasks().then(function (tasks) {
+                        var lines = [taskKeys.newMedia, taskKeys.full].map(function (key) {
+                            return describeTask(tasks.filter(function (t) { return t.Key === key; })[0]);
+                        }).filter(Boolean);
+                        var status = $('#TaskStatus');
+                        status.innerHTML = '';
+                        lines.forEach(function (line) {
+                            var div = document.createElement('div');
+                            div.textContent = line;
+                            status.appendChild(div);
+                        });
+                    });
+                }
+
+                function runTask(key) {
+                    getTasks().then(function (tasks) {
+                        var task = tasks.filter(function (t) { return t.Key === key; })[0];
+                        if (!task) {
+                            notify('Could not find the task. Try restarting Jellyfin.');
+                            return;
+                        }
+                        return ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('ScheduledTasks/Running/' + task.Id) }).then(function () {
+                            notify(task.Name + ' started.');
+                            setTimeout(refreshStatus, 1500);
+                        });
+                    }).catch(function () {
+                        notify('Could not start the task.');
+                    });
+                }
+
+                fillCountries($('#CountryCode'), false);
+                fillCountries($('#FallbackCountryCode'), true);
+                $('#Source').addEventListener('change', updateSourceVisibility);
+                $('#FallbackToOtherSource').addEventListener('change', updateSourceVisibility);
+                $('#RunNewMedia').addEventListener('click', function () { runTask(taskKeys.newMedia); });
+                $('#RunFullLibrary').addEventListener('click', function () { runTask(taskKeys.full); });
+
+                page.addEventListener('pageshow', function () {
+                    Dashboard.showLoadingMsg();
+                    Promise.all([
+                        ApiClient.getPluginConfiguration(pluginId),
+                        ApiClient.getJSON(ApiClient.getUrl('Library/VirtualFolders'))
+                    ]).then(function (results) {
+                        var config = results[0];
+                        setSelect($('#Source'), config.Source || 'Tmdb');
+                        $('#TmdbApiKey').value = config.TmdbApiKey || '';
+                        $('#TvdbApiKey').value = config.TvdbApiKey || '';
+                        $('#TvdbPin').value = config.TvdbPin || '';
+                        $('#FallbackToOtherSource').checked = !!config.FallbackToOtherSource;
+                        setSelect($('#CountryCode'), config.CountryCode || 'GB');
+                        setSelect($('#FallbackCountryCode'), config.FallbackCountryCode || '');
+                        setSelect($('#NewMediaIntervalHours'), config.NewMediaIntervalHours);
+                        setSelect($('#FullScanIntervalDays'), config.FullScanIntervalDays);
+                        $('#RunAfterLibraryScan').checked = !!config.RunAfterLibraryScan;
+                        $('#OverwriteExisting').checked = !!config.OverwriteExisting;
+                        $('#RetryUnrated').checked = !!config.RetryUnrated;
+                        $('#ApplyToSeasonsAndEpisodes').checked = !!config.ApplyToSeasonsAndEpisodes;
+                        $('#IncludeCountryPrefix').checked = !!config.IncludeCountryPrefix;
+                        $('#LockAfterUpdate').checked = !!config.LockAfterUpdate;
+                        renderLibraries(results[1] || [], config.LibraryIds || []);
+                        updateSourceVisibility();
+                        refreshStatus();
+                    }).finally(function () {
+                        Dashboard.hideLoadingMsg();
+                    });
+                });
+
+                $('#ContentRatingsConfigForm').addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    Dashboard.showLoadingMsg();
+                    ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                        config.Source = $('#Source').value;
+                        config.TmdbApiKey = $('#TmdbApiKey').value.trim();
+                        config.TvdbApiKey = $('#TvdbApiKey').value.trim();
+                        config.TvdbPin = $('#TvdbPin').value.trim();
+                        config.FallbackToOtherSource = $('#FallbackToOtherSource').checked;
+                        config.CountryCode = $('#CountryCode').value;
+                        config.FallbackCountryCode = $('#FallbackCountryCode').value;
+                        config.NewMediaIntervalHours = parseInt($('#NewMediaIntervalHours').value, 10) || 0;
+                        config.FullScanIntervalDays = parseInt($('#FullScanIntervalDays').value, 10) || 0;
+                        config.RunAfterLibraryScan = $('#RunAfterLibraryScan').checked;
+                        config.OverwriteExisting = $('#OverwriteExisting').checked;
+                        config.RetryUnrated = $('#RetryUnrated').checked;
+                        config.ApplyToSeasonsAndEpisodes = $('#ApplyToSeasonsAndEpisodes').checked;
+                        config.IncludeCountryPrefix = $('#IncludeCountryPrefix').checked;
+                        config.LockAfterUpdate = $('#LockAfterUpdate').checked;
+                        config.LibraryIds = Array.prototype.map.call(page.querySelectorAll('.chkLibrary:checked'), function (c) {
+                            return c.value;
+                        });
+
+                        var needed = config.Source === 'Tvdb' ? config.TvdbApiKey : config.TmdbApiKey;
+                        return ApiClient.updatePluginConfiguration(pluginId, config).then(function (result) {
+                            Dashboard.processPluginConfigurationUpdateResult(result);
+                            if (!needed) {
+                                notify('Saved, but no API key is set for the chosen source, so nothing will be updated yet.');
+                            } else if (config.LibraryIds.length === 0) {
+                                notify('Saved, but no libraries are ticked, so nothing will be updated yet.');
+                            }
+                        });
+                    }).finally(function () {
+                        Dashboard.hideLoadingMsg();
+                    });
+                    return false;
+                });
+            })();
+        </script>
+    </div>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "status": "success",
+  "data": {
+    "id": 81189,
+    "name": "Breaking Bad",
+    "contentRatings": [
+      { "id": 1, "name": "TV-MA", "country": "usa", "description": "", "contentType": "", "order": 0, "fullname": null },
+      { "id": 2, "name": "15", "country": "gbr", "description": "", "contentType": "", "order": 0, "fullname": null }
+    ]
+  }
+}
