@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -144,6 +145,15 @@ public class ContentRatingUpdater
             .Cast<string>()
             .ToList();
 
+        // With conversion on, US ratings are also fetched so they can stand in for a missing local one.
+        var conversions = config.ConvertUsRatings && countries.Count > 0 && countries[0] != RatingConversion.FromCountry
+            ? RatingConversion.Parse(config.UsRatingConversions)
+            : new Dictionary<string, string>();
+        var lookup = new CountryLookup(
+            countries,
+            conversions.Count > 0 && !countries.Contains(RatingConversion.FromCountry) ? [.. countries, RatingConversion.FromCountry] : countries,
+            conversions);
+
         int updated = 0, unchanged = 0, notFound = 0, skipped = 0, failed = 0;
 
         for (var i = 0; i < items.Count; i++)
@@ -154,7 +164,7 @@ public class ContentRatingUpdater
             try
             {
                 var sources = item is Series ? seriesSources : movieSources;
-                switch (await ProcessItemAsync(item, sources, countries, config, cancellationToken).ConfigureAwait(false))
+                switch (await ProcessItemAsync(item, sources, lookup, config, cancellationToken).ConfigureAwait(false))
                 {
                     case ItemOutcome.Updated: updated++; break;
                     case ItemOutcome.Unchanged: unchanged++; break;
@@ -294,7 +304,7 @@ public class ContentRatingUpdater
     private async Task<ItemOutcome> ProcessItemAsync(
         BaseItem item,
         IReadOnlyList<IRatingSource> sources,
-        IReadOnlyList<string> countries,
+        CountryLookup countries,
         PluginConfiguration config,
         CancellationToken cancellationToken)
     {
@@ -306,18 +316,51 @@ public class ContentRatingUpdater
         }
 
         SourceRating? found = null;
+        string? convertedFrom = null;
+        var misses = new List<string>();
         foreach (var source in sources)
         {
-            found = await source.GetRatingAsync(item, countries, config, cancellationToken).ConfigureAwait(false);
+            var lookup = await source.GetRatingAsync(item, countries.Requested, config, cancellationToken).ConfigureAwait(false);
+            var name = source.Name.ToUpperInvariant();
+
+            if (lookup.Rating is { } usRating
+                && countries.Conversions.Count > 0
+                && string.Equals(usRating.CountryCode, RatingConversion.FromCountry, StringComparison.OrdinalIgnoreCase))
+            {
+                if (countries.Conversions.TryGetValue(usRating.Rating, out var converted))
+                {
+                    found = new SourceRating(converted, countries.Wanted[0]);
+                    convertedFrom = $"{RatingConversion.FromCountry} {usRating.Rating}";
+                    break;
+                }
+
+                if (!countries.Wanted.Contains(RatingConversion.FromCountry))
+                {
+                    misses.Add($"{name} id {lookup.Id} only has a US rating ({usRating.Rating}), which is not in the conversion table");
+                    continue;
+                }
+            }
+
+            found = lookup.Rating;
             if (found is not null)
             {
                 break;
             }
+
+            misses.Add(lookup.Id is null
+                ? $"not identified on {name} (no {ExpectedIds(item)} id in Jellyfin)"
+                : $"{name} id {lookup.Id} has no {string.Join(" or ", countries.Requested)} rating");
         }
 
         if (found is null)
         {
-            _logger.LogDebug("No {Countries} rating found for {Name}", string.Join("/", countries), item.Name);
+            // :l writes the values as plain text, so the line reads naturally in Jellyfin's log.
+            _logger.LogInformation(
+                "No rating for {Type:l} {Name:l}{Year:l}: {Reason:l}",
+                item is Series ? "series" : "movie",
+                item.Name,
+                item.ProductionYear is { } year ? $" ({year.ToString(CultureInfo.InvariantCulture)})" : string.Empty,
+                string.Join("; ", misses));
             return ItemOutcome.NotFound;
         }
 
@@ -327,7 +370,12 @@ public class ContentRatingUpdater
 
         if (changed)
         {
-            _logger.LogInformation("{Name}: {Old} -> {New}", item.Name, string.IsNullOrEmpty(item.OfficialRating) ? "(none)" : item.OfficialRating, rating);
+            _logger.LogInformation(
+                "{Name}: {Old} -> {New}{Note:l}",
+                item.Name,
+                string.IsNullOrEmpty(item.OfficialRating) ? "(none)" : item.OfficialRating,
+                rating,
+                convertedFrom is null ? string.Empty : $" (converted from {convertedFrom})");
         }
         else if (unlock)
         {
@@ -371,6 +419,9 @@ public class ContentRatingUpdater
             await SaveRatingAsync(child, rating, ShouldLock(child, config), cancellationToken).ConfigureAwait(false);
         }
     }
+
+    private static string ExpectedIds(BaseItem item)
+        => item is Series ? "TMDB, TVDB or IMDb" : "TMDB, IMDb or TVDB";
 
     private static bool IsFieldLocked(BaseItem item)
         => item.LockedFields.Contains(MetadataField.OfficialRating);
@@ -429,6 +480,17 @@ public class ContentRatingUpdater
             item.LockedFields = item.LockedFields.Where(f => f != MetadataField.OfficialRating).ToArray();
         }
     }
+
+    /// <summary>
+    /// Countries for a run.
+    /// </summary>
+    /// <param name="Wanted">The countries the user chose, in order.</param>
+    /// <param name="Requested">The countries asked of the source; adds the US when converting.</param>
+    /// <param name="Conversions">US rating to local equivalent; empty when conversion is off.</param>
+    private sealed record CountryLookup(
+        IReadOnlyList<string> Wanted,
+        IReadOnlyList<string> Requested,
+        IReadOnlyDictionary<string, string> Conversions);
 
     private enum ItemOutcome
     {

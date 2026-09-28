@@ -1,4 +1,5 @@
 using System;
+using Jellyfin.Plugin.ContentRatings.Sources;
 using MediaBrowser.Model.Plugins;
 
 namespace Jellyfin.Plugin.ContentRatings.Configuration;
@@ -50,6 +51,17 @@ public class PluginConfiguration : BasePluginConfiguration
     /// Gets or sets an optional second country to use when the first has no rating, e.g. <c>US</c>.
     /// </summary>
     public string FallbackCountryCode { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Gets or sets a value indicating whether to convert a US rating into an equivalent for
+    /// <see cref="CountryCode"/> when that country has no rating of its own.
+    /// </summary>
+    public bool ConvertUsRatings { get; set; }
+
+    /// <summary>
+    /// Gets or sets the conversion table, one <c>US = converted</c> pair per line.
+    /// </summary>
+    public string UsRatingConversions { get; set; } = RatingConversion.DefaultUsToGb;
 
     /// <summary>
     /// Gets or sets the ids of the libraries (collection folders) the plugin updates.

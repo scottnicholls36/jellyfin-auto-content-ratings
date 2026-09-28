@@ -43,7 +43,7 @@ public sealed class TmdbRatingSource : IRatingSource
     public bool IsConfigured(PluginConfiguration config) => !string.IsNullOrWhiteSpace(config.TmdbApiKey);
 
     /// <inheritdoc />
-    public async Task<SourceRating?> GetRatingAsync(
+    public async Task<RatingLookup> GetRatingAsync(
         BaseItem item,
         IReadOnlyList<string> countryCodes,
         PluginConfiguration config,
@@ -61,11 +61,11 @@ public sealed class TmdbRatingSource : IRatingSource
                     var id = await ResolveIdAsync(client, apiKey, item, isTv: false, cancellationToken).ConfigureAwait(false);
                     if (id is null)
                     {
-                        return null;
+                        return RatingLookup.NotIdentified;
                     }
 
                     var response = await GetAsync<TmdbReleaseDatesResponse>(client, apiKey, $"movie/{id}/release_dates", cancellationToken).ConfigureAwait(false);
-                    return RatingSelector.SelectTmdbMovie(response, countryCodes);
+                    return new RatingLookup(id, RatingSelector.SelectTmdbMovie(response, countryCodes));
                 }
 
                 case Series:
@@ -73,15 +73,15 @@ public sealed class TmdbRatingSource : IRatingSource
                     var id = await ResolveIdAsync(client, apiKey, item, isTv: true, cancellationToken).ConfigureAwait(false);
                     if (id is null)
                     {
-                        return null;
+                        return RatingLookup.NotIdentified;
                     }
 
                     var response = await GetAsync<TmdbContentRatingsResponse>(client, apiKey, $"tv/{id}/content_ratings", cancellationToken).ConfigureAwait(false);
-                    return RatingSelector.SelectTmdbTv(response, countryCodes);
+                    return new RatingLookup(id, RatingSelector.SelectTmdbTv(response, countryCodes));
                 }
 
                 default:
-                    return null;
+                    return RatingLookup.NotIdentified;
             }
         }
         catch (HttpUnauthorizedException)

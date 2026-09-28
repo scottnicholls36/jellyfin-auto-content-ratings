@@ -14,6 +14,19 @@ namespace Jellyfin.Plugin.ContentRatings.Sources;
 public sealed record SourceRating(string Rating, string CountryCode);
 
 /// <summary>
+/// The outcome of a lookup: the id the item was found under (if any) and the rating (if any).
+/// </summary>
+/// <param name="Id">The source's own id for the item, or <c>null</c> if the item could not be identified.</param>
+/// <param name="Rating">The rating, or <c>null</c> if the source has none for the requested countries.</param>
+public sealed record RatingLookup(string? Id, SourceRating? Rating)
+{
+    /// <summary>
+    /// Gets a result for an item the source could not identify.
+    /// </summary>
+    public static RatingLookup NotIdentified { get; } = new(null, null);
+}
+
+/// <summary>
 /// Looks up content ratings from an online metadata service.
 /// </summary>
 public interface IRatingSource
@@ -37,8 +50,8 @@ public interface IRatingSource
     /// <param name="countryCodes">ISO 3166-1 alpha-2 codes in order of preference.</param>
     /// <param name="config">Current configuration.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The rating, or <c>null</c> if none was found.</returns>
-    Task<SourceRating?> GetRatingAsync(
+    /// <returns>The id the item was found under and its rating, either of which may be missing.</returns>
+    Task<RatingLookup> GetRatingAsync(
         BaseItem item,
         IReadOnlyList<string> countryCodes,
         PluginConfiguration config,

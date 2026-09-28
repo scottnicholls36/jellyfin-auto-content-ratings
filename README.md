@@ -6,6 +6,7 @@ A Jellyfin 12 plugin that automatically fills in the **Parental Rating** field (
 
 - **Choose your data source:** TMDB or TVDB, set separately for movies and TV series (e.g. TMDB for movies, TVDB for TV), with an optional fallback to the other if the first has no rating.
 - **Choose the rating country:** e.g. United Kingdom for BBFC ratings, with an optional fallback country (e.g. US).
+- **Convert US ratings:** when only a US rating exists, optionally convert it to an equivalent using an editable table (defaults to UK: TV-MA becomes 18, PG-13 becomes 12A, and so on). These are equivalents, not official ratings; a real rating for your country always wins.
 - **Choose your libraries:** only ticked movie and TV libraries are touched.
 - **Choose how often:** check for new media every hour, 6 hours, 12 hours, day or week, or manually only. It can also check automatically after every library scan.
 - **Whole library re-check:** on demand, or every week, 2 weeks or 30 days.
