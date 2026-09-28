@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -306,18 +307,30 @@ public class ContentRatingUpdater
         }
 
         SourceRating? found = null;
+        var misses = new List<string>();
         foreach (var source in sources)
         {
-            found = await source.GetRatingAsync(item, countries, config, cancellationToken).ConfigureAwait(false);
+            var lookup = await source.GetRatingAsync(item, countries, config, cancellationToken).ConfigureAwait(false);
+            found = lookup.Rating;
             if (found is not null)
             {
                 break;
             }
+
+            misses.Add(lookup.Id is null
+                ? $"not identified on {source.Name.ToUpperInvariant()} (no {ExpectedIds(item)} id in Jellyfin)"
+                : $"{source.Name.ToUpperInvariant()} id {lookup.Id} has no {string.Join(" or ", countries)} rating");
         }
 
         if (found is null)
         {
-            _logger.LogDebug("No {Countries} rating found for {Name}", string.Join("/", countries), item.Name);
+            // :l writes the values as plain text, so the line reads naturally in Jellyfin's log.
+            _logger.LogInformation(
+                "No rating for {Type:l} {Name:l}{Year:l}: {Reason:l}",
+                item is Series ? "series" : "movie",
+                item.Name,
+                item.ProductionYear is { } year ? $" ({year.ToString(CultureInfo.InvariantCulture)})" : string.Empty,
+                string.Join("; ", misses));
             return ItemOutcome.NotFound;
         }
 
@@ -371,6 +384,9 @@ public class ContentRatingUpdater
             await SaveRatingAsync(child, rating, ShouldLock(child, config), cancellationToken).ConfigureAwait(false);
         }
     }
+
+    private static string ExpectedIds(BaseItem item)
+        => item is Series ? "TMDB, TVDB or IMDb" : "TMDB, IMDb or TVDB";
 
     private static bool IsFieldLocked(BaseItem item)
         => item.LockedFields.Contains(MetadataField.OfficialRating);

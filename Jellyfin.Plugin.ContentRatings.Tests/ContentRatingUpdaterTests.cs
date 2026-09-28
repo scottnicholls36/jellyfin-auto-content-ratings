@@ -12,6 +12,7 @@ using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Model.Entities;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -491,10 +492,40 @@ public class ContentRatingUpdaterTests
         Assert.Empty(_queries);
     }
 
+    [Fact]
+    public async Task LogsWhyEachItemWasNotFound()
+    {
+        var unidentified = NewMovie("Home Video");
+        var unrated = new Series { Id = Guid.NewGuid(), Name = "Penn & Teller: Bullshit!", ProductionYear = 2003 };
+        _libraryItems = [unidentified, unrated];
+        _tmdb.IdsWithoutRating[unrated.Id] = "1590";
+        var logger = new ListLogger();
+        var updater = new TestUpdater(_libraryManager.Object, [_tmdb, _tvdb], _runState, () => _config, logger);
+
+        var summary = await updater.RunAsync(fullScan: true, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal(2, summary.NotFound);
+        Assert.Contains("No rating for movie Home Video: not identified on TMDB (no TMDB, IMDb or TVDB id in Jellyfin)", logger.Messages);
+        Assert.Contains("No rating for series Penn & Teller: Bullshit! (2003): TMDB id 1590 has no GB rating", logger.Messages);
+    }
+
+    private sealed class ListLogger : ILogger<ContentRatingUpdater>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Add(formatter(state, exception));
+    }
+
     private sealed class TestUpdater : ContentRatingUpdater
     {
-        public TestUpdater(ILibraryManager libraryManager, IEnumerable<IRatingSource> sources, RunStateStore runState, Func<PluginConfiguration> config)
-            : base(libraryManager, sources, runState, NullLogger<ContentRatingUpdater>.Instance, config)
+        public TestUpdater(ILibraryManager libraryManager, IEnumerable<IRatingSource> sources, RunStateStore runState, Func<PluginConfiguration> config, ILogger<ContentRatingUpdater>? logger = null)
+            : base(libraryManager, sources, runState, logger ?? NullLogger<ContentRatingUpdater>.Instance, config)
         {
         }
 
@@ -524,6 +555,8 @@ public class ContentRatingUpdaterTests
 
         public HashSet<Guid> Throw { get; } = [];
 
+        public Dictionary<Guid, string> IdsWithoutRating { get; } = [];
+
         public bool AuthFails { get; set; }
 
         public int Calls { get; private set; }
@@ -531,7 +564,7 @@ public class ContentRatingUpdaterTests
         public bool IsConfigured(PluginConfiguration config)
             => !string.IsNullOrEmpty(Name == RatingSourceNames.Tmdb ? config.TmdbApiKey : config.TvdbApiKey);
 
-        public Task<SourceRating?> GetRatingAsync(BaseItem item, IReadOnlyList<string> countryCodes, PluginConfiguration config, CancellationToken cancellationToken)
+        public Task<RatingLookup> GetRatingAsync(BaseItem item, IReadOnlyList<string> countryCodes, PluginConfiguration config, CancellationToken cancellationToken)
         {
             Calls++;
             if (AuthFails)
@@ -544,7 +577,12 @@ public class ContentRatingUpdaterTests
                 throw new System.Net.Http.HttpRequestException("boom");
             }
 
-            return Task.FromResult(Ratings.TryGetValue(item.Id, out var r) ? r : null);
+            if (IdsWithoutRating.TryGetValue(item.Id, out var id))
+            {
+                return Task.FromResult(new RatingLookup(id, null));
+            }
+
+            return Task.FromResult(Ratings.TryGetValue(item.Id, out var r) ? new RatingLookup("1", r) : RatingLookup.NotIdentified);
         }
     }
 

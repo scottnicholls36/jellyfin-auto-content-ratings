@@ -51,7 +51,7 @@ public sealed class TvdbRatingSource : IRatingSource
     public bool IsConfigured(PluginConfiguration config) => !string.IsNullOrWhiteSpace(config.TvdbApiKey);
 
     /// <inheritdoc />
-    public async Task<SourceRating?> GetRatingAsync(
+    public async Task<RatingLookup> GetRatingAsync(
         BaseItem item,
         IReadOnlyList<string> countryCodes,
         PluginConfiguration config,
@@ -66,7 +66,7 @@ public sealed class TvdbRatingSource : IRatingSource
 
         if (kind is null)
         {
-            return null;
+            return RatingLookup.NotIdentified;
         }
 
         var client = _httpClientFactory.CreateClient(NamedClient.Default);
@@ -74,11 +74,11 @@ public sealed class TvdbRatingSource : IRatingSource
         var id = await ResolveIdAsync(client, config, item, isMovie: kind == "movies", cancellationToken).ConfigureAwait(false);
         if (id is null)
         {
-            return null;
+            return RatingLookup.NotIdentified;
         }
 
         var response = await GetAsync<TvdbResponse<TvdbExtendedRecord>>(client, config, $"{kind}/{id}/extended", cancellationToken).ConfigureAwait(false);
-        return RatingSelector.SelectTvdb(response?.Data, countryCodes);
+        return new RatingLookup(id, RatingSelector.SelectTvdb(response?.Data, countryCodes));
     }
 
     private async Task<string?> ResolveIdAsync(HttpClient client, PluginConfiguration config, BaseItem item, bool isMovie, CancellationToken cancellationToken)
