@@ -48,7 +48,7 @@ New versions then show up as updates in Jellyfin automatically.
 ## How it works
 
 - It looks at movies and series (not individual episodes) in the chosen libraries. Items need a TMDB, TVDB or IMDb id, which Jellyfin's normal metadata fetch provides. If an item lacks the chosen source's own id, the plugin looks it up from its other ids.
-- **New media** means items added since the last successful run. The very first run covers everything. With "retry items that still have no rating" on, any unrated items are also tried again each time.
+- **New media** means movies and series added or changed since the last successful run, plus any series that gained new episodes. "Changed" matters because Jellyfin dates new items by the file's creation date, which can be years old for copied or downloaded files; it also catches ratings a metadata refresh has overwritten. The very first run covers everything. With "retry items that still have no rating" on, any unrated items are also tried again each time.
 - If any item fails (e.g. a network error), the next new-media run tries the same period again.
 - A rejected API key stops the run straight away and shows the error against the task.
 - Changing the schedules on the settings page updates the two tasks under **Scheduled Tasks**. If you edit them there, that is fine too, but the settings page won't reflect it.

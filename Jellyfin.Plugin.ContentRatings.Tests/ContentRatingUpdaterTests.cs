@@ -29,6 +29,7 @@ public class ContentRatingUpdaterTests
     private readonly List<InternalItemsQuery> _queries = [];
     private readonly Dictionary<Guid, List<BaseItem>> _children = [];
     private List<BaseItem> _libraryItems = [];
+    private List<BaseItem> _libraryChildren = [];
 
     private readonly PluginConfiguration _config = new()
     {
@@ -49,7 +50,7 @@ public class ContentRatingUpdaterTests
                     return _children.TryGetValue(q.AncestorIds[0], out var kids) ? kids : [];
                 }
 
-                IEnumerable<BaseItem> items = _libraryItems;
+                IEnumerable<BaseItem> items = q.IncludeItemTypes.Contains(BaseItemKind.Episode) ? _libraryChildren : _libraryItems;
                 if (q.HasOfficialRating == false)
                 {
                     items = items.Where(i => string.IsNullOrEmpty(i.OfficialRating));
@@ -58,6 +59,11 @@ public class ContentRatingUpdaterTests
                 if (q.MinDateCreated is { } min)
                 {
                     items = items.Where(i => i.DateCreated >= min);
+                }
+
+                if (q.MinDateLastSaved is { } minSaved)
+                {
+                    items = items.Where(i => i.DateLastSaved >= minSaved);
                 }
 
                 return items.ToList();
@@ -169,6 +175,66 @@ public class ContentRatingUpdaterTests
         Assert.Equal("18", oldUnrated.OfficialRating);
         Assert.Equal("18", fresh.OfficialRating);
         Assert.True(_runState.LastRun > lastRun);
+    }
+
+    [Fact]
+    public async Task NewMediaRunPicksUpItemsWithOldFileDatesThatWereSavedRecently()
+    {
+        // Jellyfin's "date added" defaults to the file's creation time, which can predate the last run.
+        var lastRun = DateTime.UtcNow.AddDays(-1);
+        _runState.LastRun = lastRun;
+        var copiedIn = NewMovie("Copied in", "R", lastRun.AddYears(-3));
+        copiedIn.DateLastSaved = lastRun.AddHours(2);
+        var untouched = NewMovie("Untouched", "R", lastRun.AddYears(-3));
+        untouched.DateLastSaved = lastRun.AddDays(-30);
+        _libraryItems = [copiedIn, untouched];
+        _tmdb.Ratings[copiedIn.Id] = new SourceRating("18", "GB");
+        _tmdb.Ratings[untouched.Id] = new SourceRating("18", "GB");
+
+        var summary = await CreateUpdater().RunAsync(fullScan: false, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal(1, summary.Checked);
+        Assert.Equal("18", copiedIn.OfficialRating);
+        Assert.Equal("R", untouched.OfficialRating);
+    }
+
+    [Fact]
+    public async Task NewMediaRunRechecksSeriesThatGainedEpisodes()
+    {
+        var lastRun = DateTime.UtcNow.AddDays(-1);
+        _runState.LastRun = lastRun;
+        var series = new Series { Id = Guid.NewGuid(), Name = "Show", OfficialRating = "15", DateCreated = lastRun.AddYears(-1), DateLastSaved = lastRun.AddDays(-5) };
+        var oldEpisode = new Episode { Id = Guid.NewGuid(), Name = "Old", SeriesId = series.Id, OfficialRating = "15", DateCreated = lastRun.AddYears(-1), DateLastSaved = lastRun.AddDays(-5) };
+        var newEpisode = new Episode { Id = Guid.NewGuid(), Name = "New", SeriesId = series.Id, DateCreated = lastRun.AddYears(-1), DateLastSaved = lastRun.AddHours(1) };
+        _libraryItems = [series];
+        _libraryChildren = [oldEpisode, newEpisode];
+        _children[series.Id] = [oldEpisode, newEpisode];
+        _libraryManager.Setup(m => m.GetItemById(series.Id)).Returns(series);
+        _tmdb.Ratings[series.Id] = new SourceRating("15", "GB");
+        var updater = CreateUpdater();
+
+        var summary = await updater.RunAsync(fullScan: false, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal(1, summary.Checked);
+        Assert.Equal("15", newEpisode.OfficialRating);
+        Assert.Equal([newEpisode.Id], updater.Saved.Select(i => i.Id));
+    }
+
+    [Fact]
+    public async Task NewMediaRunIgnoresNewEpisodesWhenNotCopyingToEpisodes()
+    {
+        var lastRun = DateTime.UtcNow.AddDays(-1);
+        _runState.LastRun = lastRun;
+        var series = new Series { Id = Guid.NewGuid(), Name = "Show", OfficialRating = "15", DateCreated = lastRun.AddYears(-1) };
+        _libraryItems = [series];
+        _libraryChildren = [new Episode { Id = Guid.NewGuid(), Name = "New", SeriesId = series.Id, DateCreated = lastRun.AddHours(1) }];
+        _libraryManager.Setup(m => m.GetItemById(series.Id)).Returns(series);
+        _config.ApplyToSeasonsAndEpisodes = false;
+        _config.RetryUnrated = false;
+
+        var summary = await CreateUpdater().RunAsync(fullScan: false, new Progress<double>(), CancellationToken.None);
+
+        Assert.Equal(0, summary.Checked);
     }
 
     [Fact]

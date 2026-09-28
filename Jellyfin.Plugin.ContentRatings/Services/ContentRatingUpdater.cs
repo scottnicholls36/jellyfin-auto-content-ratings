@@ -128,12 +128,12 @@ public class ContentRatingUpdater
 
         // With no previous run, the first new-media check covers everything.
         var since = fullScan ? null : _runState.GetLastRunUtc();
-        var items = CollectItems(libraryIds, since, retryUnrated: config.RetryUnrated);
+        var items = CollectItems(libraryIds, since, config.RetryUnrated, config.ApplyToSeasonsAndEpisodes);
 
         _logger.LogInformation(
             "Checking content ratings for {Count} items ({Mode}); movies from {MovieSources}, TV series from {SeriesSources}",
             items.Count,
-            since is null ? "all items" : $"added since {since:u}",
+            since is null ? "all items" : $"new or changed since {since:u}",
             Describe(movieSources),
             Describe(seriesSources));
 
@@ -211,9 +211,17 @@ public class ContentRatingUpdater
     private static string Describe(IReadOnlyList<IRatingSource> sources)
         => sources.Count == 0 ? "(none: no API key)" : string.Join(" then ", sources.Select(s => s.Name));
 
-    private List<BaseItem> CollectItems(IReadOnlyList<Guid> libraryIds, DateTime? since, bool retryUnrated)
+    private List<BaseItem> CollectItems(IReadOnlyList<Guid> libraryIds, DateTime? since, bool retryUnrated, bool includeSeriesWithNewEpisodes)
     {
         var items = new Dictionary<Guid, BaseItem>();
+
+        void AddAll(IEnumerable<BaseItem> found)
+        {
+            foreach (var item in found)
+            {
+                items.TryAdd(item.Id, item);
+            }
+        }
 
         foreach (var libraryId in libraryIds)
         {
@@ -223,17 +231,45 @@ public class ContentRatingUpdater
                 continue;
             }
 
-            // The server narrows a recursive ParentId query to everything inside that library.
-            foreach (var item in Query(libraryId, since, hasRating: null))
+            if (since is null)
             {
-                items.TryAdd(item.Id, item);
+                AddAll(Query(libraryId, _topLevelKinds, q => { }));
+                continue;
             }
 
-            if (since is not null && retryUnrated)
+            // "Date added" defaults to the file's creation time, which can be long before the file reached the
+            // library, so also count anything saved since the last run. Every new item is saved when its
+            // metadata is fetched, and this also catches ratings a later metadata refresh has overwritten.
+            AddAll(Query(libraryId, _topLevelKinds, q => q.MinDateCreated = since));
+            AddAll(Query(libraryId, _topLevelKinds, q => q.MinDateLastSaved = since));
+
+            if (retryUnrated)
             {
-                foreach (var item in Query(libraryId, since: null, hasRating: false))
+                AddAll(Query(libraryId, _topLevelKinds, q => q.HasOfficialRating = false));
+            }
+
+            if (includeSeriesWithNewEpisodes)
+            {
+                // New episodes of an existing series: re-check the series so its rating is copied to them.
+                var children = Query(libraryId, _childKinds, q => q.MinDateCreated = since)
+                    .Concat(Query(libraryId, _childKinds, q => q.MinDateLastSaved = since));
+
+                var seriesIds = children
+                    .Select(c => c switch
+                    {
+                        Episode e => e.SeriesId,
+                        Season s => s.SeriesId,
+                        _ => Guid.Empty
+                    })
+                    .Where(id => id != Guid.Empty && !items.ContainsKey(id))
+                    .Distinct();
+
+                foreach (var seriesId in seriesIds)
                 {
-                    items.TryAdd(item.Id, item);
+                    if (_libraryManager.GetItemById(seriesId) is Series series)
+                    {
+                        items.TryAdd(series.Id, series);
+                    }
                 }
             }
         }
@@ -241,16 +277,19 @@ public class ContentRatingUpdater
         return items.Values.OrderBy(i => i.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    private IReadOnlyList<BaseItem> Query(Guid libraryId, DateTime? since, bool? hasRating)
-        => _libraryManager.GetItemList(new InternalItemsQuery
+    private IReadOnlyList<BaseItem> Query(Guid libraryId, BaseItemKind[] kinds, Action<InternalItemsQuery> filter)
+    {
+        // The server narrows a recursive ParentId query to everything inside that library.
+        var query = new InternalItemsQuery
         {
             ParentId = libraryId,
             Recursive = true,
-            IncludeItemTypes = _topLevelKinds,
-            IsVirtualItem = false,
-            MinDateCreated = since,
-            HasOfficialRating = hasRating
-        });
+            IncludeItemTypes = kinds,
+            IsVirtualItem = false
+        };
+        filter(query);
+        return _libraryManager.GetItemList(query);
+    }
 
     private async Task<ItemOutcome> ProcessItemAsync(
         BaseItem item,
