@@ -5,7 +5,7 @@
     <title>Auto Content Ratings</title>
 </head>
 <body>
-    <div id="ContentRatingsConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox">
+    <div id="ContentRatingsConfigPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-input,emby-button,emby-select,emby-checkbox,emby-textarea">
         <div data-role="content">
             <div class="content-primary">
                 <form id="ContentRatingsConfigForm">
@@ -65,6 +65,21 @@
                         <div class="selectContainer">
                             <label class="selectLabel" for="FallbackCountryCode">If there is no rating for that country, use</label>
                             <select is="emby-select" id="FallbackCountryCode" class="emby-select-withcolor emby-select"></select>
+                        </div>
+                        <div class="checkboxContainer checkboxContainer-withDescription">
+                            <label class="emby-checkbox-label">
+                                <input id="ConvertUsRatings" type="checkbox" is="emby-checkbox" />
+                                <span>If only a US rating exists, convert it to an equivalent rating</span>
+                            </label>
+                            <div class="fieldDescription checkboxFieldDescription">Uses the table below, e.g. TV-MA becomes 18. These are equivalents, not official ratings. A rating from your chosen country always takes priority.</div>
+                        </div>
+                        <div class="inputContainer" id="ConversionTableContainer">
+                            <label class="inputLabel inputLabelUnfocused" for="UsRatingConversions">Conversion table (US rating = your rating, one per line)</label>
+                            <textarea is="emby-textarea" id="UsRatingConversions" class="emby-textarea" rows="12" style="font-family: monospace;"></textarea>
+                            <div class="fieldDescription">The defaults are for UK (BBFC) ratings and lean cautious where there is no exact match. US ratings not listed are not converted.</div>
+                            <button is="emby-button" type="button" id="ResetConversions" class="raised emby-button" style="margin-top: 0.5em;">
+                                <span>Restore default table</span>
+                            </button>
                         </div>
                     </div>
 
@@ -218,6 +233,15 @@
                     select.value = v;
                 }
 
+                var defaultConversions = [
+                    'G = U', 'TV-Y = U', 'TV-G = U', 'PG = PG', 'TV-Y7 = PG', 'TV-Y7-FV = PG', 'TV-PG = PG',
+                    'PG-13 = 12A', 'TV-14 = 15', 'R = 15', 'TV-MA = 18', 'NC-17 = 18'
+                ].join('\n');
+
+                function updateConversionVisibility() {
+                    $('#ConversionTableContainer').style.display = $('#ConvertUsRatings').checked ? '' : 'none';
+                }
+
                 function updateSourceVisibility() {
                     var chosen = [$('#Source').value, $('#SeriesSource').value];
                     var both = $('#FallbackToOtherSource').checked;
@@ -313,6 +337,10 @@
                 fillCountries($('#FallbackCountryCode'), true);
                 $('#Source').addEventListener('change', updateSourceVisibility);
                 $('#SeriesSource').addEventListener('change', updateSourceVisibility);
+                $('#ConvertUsRatings').addEventListener('change', updateConversionVisibility);
+                $('#ResetConversions').addEventListener('click', function () {
+                    $('#UsRatingConversions').value = defaultConversions;
+                });
                 $('#FallbackToOtherSource').addEventListener('change', updateSourceVisibility);
                 $('#RunNewMedia').addEventListener('click', function () { runTask(taskKeys.newMedia); });
                 $('#RunFullLibrary').addEventListener('click', function () { runTask(taskKeys.full); });
@@ -342,6 +370,11 @@
                         $('#IncludeCountryPrefix').checked = !!config.IncludeCountryPrefix;
                         $('#LockAfterUpdate').checked = !!config.LockAfterUpdate;
                         setSelect($('#LockedRatings'), config.LockedRatings || 'Skip');
+                        $('#ConvertUsRatings').checked = !!config.ConvertUsRatings;
+                        $('#UsRatingConversions').value = config.UsRatingConversions === undefined || config.UsRatingConversions === null
+                            ? defaultConversions
+                            : config.UsRatingConversions;
+                        updateConversionVisibility();
                         renderLibraries(results[1] || [], config.LibraryIds || []);
                         updateSourceVisibility();
                         refreshStatus();
@@ -371,6 +404,8 @@
                         config.IncludeCountryPrefix = $('#IncludeCountryPrefix').checked;
                         config.LockAfterUpdate = $('#LockAfterUpdate').checked;
                         config.LockedRatings = $('#LockedRatings').value;
+                        config.ConvertUsRatings = $('#ConvertUsRatings').checked;
+                        config.UsRatingConversions = $('#UsRatingConversions').value;
                         config.LibraryIds = Array.prototype.map.call(page.querySelectorAll('.chkLibrary:checked'), function (c) {
                             return c.value;
                         });
